@@ -1,0 +1,21 @@
+{
+    "name": "pushdetector",
+    "version": "1.0.0",
+    "description": "Determines when push notifications need to intiated",
+    "main": "pushdetector.js",
+    "scripts": {
+        "start": "node pushdetector.js",
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [
+        "push",
+        "notifications"
+    ],
+    "author": "Paul Beaudet",
+    "license": "MIT",
+    "dependencies": {
+        "firebase-admin": "^5.4.1",
+        "mongodb": "^2.2.31",
+        "tmp": "0.0.33"
+    }
+}
