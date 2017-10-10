@@ -59,6 +59,17 @@ var mongo = {
     }
 };
 
+var detect = { // object that is responsible for searching database to find when a push notification needs to be initiated
+    init: function(){
+        mongo.db[mongo.MAIN].collections(mongo.USER).find(
+            {},
+            function forUsersWithAppointments(error, data){
+                
+            }
+        );
+    }
+};
+
 var config = {
     crypto: require('crypto'),
     fs: require('fs'),
@@ -84,12 +95,6 @@ var config = {
                 onFinish(path.join(__dirname, '/private/serviceAccount.json')); // actual location on dev machine
             });
         }
-    }
-};
-
-var detect = { // object that is responsible for searching database to find when a push notification needs to be initiated
-    init: function(){
-        
     }
 };
 
