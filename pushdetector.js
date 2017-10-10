@@ -1,4 +1,6 @@
 // pushdetector.js Copyright 2017 Paul Beaudet ~ License MIT
+var path = require('path');
+var tmp = require('tmp');
 
 var firebase = { // it might be better to set this up in a suplemantery service that regularly checks when notifications need to be sent
     admin: require('firebase-admin'),
@@ -51,22 +53,31 @@ var mongo = {
             }
         });
     },
-    init: function(mainDbUp){
-        mongo.connect(process.env.MONGODB_URI, mongo.MAIN, function connected(){                        // connect to main database
-            mongo.db[mongo.MAIN].collection(mongo.LOBBY).createIndex({"lobbyname": 1}, {unique: true}); // primary unique id feild for this collection
+    init: function(MAIN_DB_URL, mainDbUp){
+        mongo.connect(MAIN_DB_URL, mongo.MAIN, function connected(){                        // connect to main database
             mainDbUp();
         });
     }
 };
 
 var detect = { // object that is responsible for searching database to find when a push notification needs to be initiated
-    init: function(){
-        mongo.db[mongo.MAIN].collections(mongo.USER).find(
-            {},
-            function forUsersWithAppointments(error, data){
-                
-            }
-        );
+    appointments: function(){
+        setTimeout(detect.appointments, 300000); // call this function once more in next five minutes
+        var cursor = mongo.db[mongo.MAIN].collection(mongo.USER).find({});
+        detect.doc(cursor);
+    },
+    doc: function(cursor){
+        process.nextTick(function nextDoc(){
+            cursor.nextObject(function onDoc(error, doc){
+                if(error){mongo.log('pushDetect' + error);}
+                else if(doc){
+                    console.log(JSON.stringify(doc, null, 4));
+                    detect.doc(cursor);
+                } else {
+                    console.log('Completed detection pass'); // done with search
+                }
+            });
+        });
     }
 };
 
@@ -100,8 +111,9 @@ var config = {
 
 function startup(serviceFilePath){
     firebase.init(serviceFilePath);           // setup communication with firebase servers to do push notifications
-    mongo.init(function mainDbUp(){           // set up connections for data persistence
+    mongo.init(process.env.MONGODB_URI, function mainDbUp(){           // set up connections for data persistence
         console.log('connected to db');
+        detect.appointments();
     });
 }
 
