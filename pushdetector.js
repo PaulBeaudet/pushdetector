@@ -1,23 +1,32 @@
 // pushdetector.js Copyright 2017 Paul Beaudet ~ License MIT
 var path = require('path');
 var tmp = require('tmp');
+var FIVE_MIN = 300000; // milliseconds in five minutes
+var ONE_MIN = 60000;   // one minute to milliseconds
+var APP_TITLE = 'Hangoutwithme';
 
 var firebase = { // it might be better to set this up in a suplemantery service that regularly checks when notifications need to be sent
     admin: require('firebase-admin'),
     init: function(serviceFilePath){
         var serviceAccount = require(serviceFilePath);
         firebase.admin.initializeApp({
-            credential: firebase.admin.credential.cert(serviceAccount),
-            // databaseURL: dbPath // We may need this but not sure why
+            credential: firebase.admin.credential.cert(serviceAccount)
         });
     },
-    pushIt: function(fcmToken, reminder){
-        var payload = {data: {title: 'Reminder',body: reminder}};
+    pushIt: function(fcmToken, msg){
+        var payload = {data: {title: APP_TITLE, body: msg}};
         firebase.admin.messaging().sendToDevice(fcmToken, payload).then(function(response) {
-            console.log("Successfully sent message:", response);
+            // console.log("Successfully sent message:", response);
         }).catch(function(error) {
-            console.log("Error sending message:", error);
+            mongo.log("pushdetector send error:", error);
         });
+    },
+    pushEm: function(fcmTokens, msg){
+        return function doThePushing(){
+            for(var token = 0; token < fcmTokens.length; token++){
+                firebase.pushIt(fcmTokens[token], msg);
+            }
+        };
     }
 };
 
@@ -62,7 +71,7 @@ var mongo = {
 
 var detect = { // object that is responsible for searching database to find when a push notification needs to be initiated
     appointments: function(){
-        setTimeout(detect.appointments, 300000); // call this function once more in next five minutes
+        setTimeout(detect.appointments, FIVE_MIN); // call this function once more in next five minutes
         var cursor = mongo.db[mongo.MAIN].collection(mongo.USER).find({});
         detect.doc(cursor);
     },
@@ -71,13 +80,29 @@ var detect = { // object that is responsible for searching database to find when
             cursor.nextObject(function onDoc(error, doc){
                 if(error){mongo.log('pushDetect' + error);}
                 else if(doc){
-                    console.log(JSON.stringify(doc, null, 4));
+                    detect.process(doc);
                     detect.doc(cursor);
-                } else {
-                    console.log('Completed detection pass'); // done with search
                 }
             });
         });
+    },
+    process: function(doc){
+        if(doc.appointments.length){                                                        // if this user has any appointments
+            var currentTime = new Date().getTime();                                         // this is utc and local, wrap your head around that
+            for(var appointment = 0; appointment < doc.appointments.length; appointment++){ // for each appointment
+                var offset = doc.appointments[appointment].time - currentTime;              // figure in how many millis appointment needs to happen
+                if(offset > 0 && offset < FIVE_MIN){                           // given that this appointment is comming up in about five minutes
+                    console.log('scheduling notification for appointment');
+                    var millisToSend = 0;                                      // send imediately if we are getting close to send time
+                    if(offset > ONE_MIN){millisToSend = offset - ONE_MIN;}     // avoid sending in a negative amount of time
+                    var particpants = [doc.fcmToken, doc.appointments[appointment].fcmToken];
+                    setTimeout(firebase.pushEm(particpants, doc.hangoutLink), millisToSend);
+                } else {
+                    if(offset > 0){console.log('skiping future appointment');}
+                    else{console.log('appointment past');}
+                }
+            }
+        }
     }
 };
 
@@ -112,7 +137,6 @@ var config = {
 function startup(serviceFilePath){
     firebase.init(serviceFilePath);           // setup communication with firebase servers to do push notifications
     mongo.init(process.env.MONGODB_URI, function mainDbUp(){           // set up connections for data persistence
-        console.log('connected to db');
         detect.appointments();
     });
 }
