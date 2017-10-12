@@ -32,6 +32,7 @@ var firebase = { // it might be better to set this up in a suplemantery service 
 
 var mongo = {
     MAIN: 'hangoutwithme', // name of key to call database by
+    PUSH: 'pushdetector',  // name of push server database
     LOBBY: 'lobbys',       // name of collection that stores customer routes
     USER: 'profiles',      // name of collection that stores user data
     lOGIN: 'logins',       // persitent key/val store of lOGIN users (should prob use redis)
@@ -62,9 +63,11 @@ var mongo = {
             }
         });
     },
-    init: function(MAIN_DB_URL, mainDbUp){
-        mongo.connect(MAIN_DB_URL, mongo.MAIN, function connected(){                        // connect to main database
-            mainDbUp();
+    init: function(PUSH_DB_URL, MAIN_DB_URL, dbsUp){
+        mongo.connect(MAIN_DB_URL, mongo.MAIN, function mainConnected(){        // connect to main database
+            mongo.connect(PUSH_DB_URL, mongo.PUSH, function pushDBconnected(){  // connect to push database
+                dbsUp();
+            });
         });
     }
 };
@@ -135,8 +138,8 @@ var config = {
 };
 
 function startup(serviceFilePath){
-    firebase.init(serviceFilePath);           // setup communication with firebase servers to do push notifications
-    mongo.init(process.env.MONGODB_URI, function mainDbUp(){           // set up connections for data persistence
+    firebase.init(serviceFilePath);                       // setup communication with firebase servers to do push notifications
+    mongo.init(process.env.MONGODB_URI, process.env.MAIN_MONGO, function mainDbUp(){ // set up connections for data persistence
         detect.appointments();
     });
 }
