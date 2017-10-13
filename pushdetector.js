@@ -13,19 +13,29 @@ var firebase = { // it might be better to set this up in a suplemantery service 
             credential: firebase.admin.credential.cert(serviceAccount)
         });
     },
-    pushIt: function(fcmToken, msg){
-        var payload = {data: {title: APP_TITLE, body: msg}};
+    pushIt: function(fcmToken, msg, noteStatus){
+        console.log(msg);
+        var payload = {data: {title: APP_TITLE, body: msg, click_action: 'www.google.com'}};
         firebase.admin.messaging().sendToDevice(fcmToken, payload).then(function(response) {
-            // console.log("Successfully sent message:", response);
+            console.log("Successfully sent message:", response);
+            if(noteStatus){noteStatus(null, response);}
         }).catch(function(error) {
             mongo.log("pushdetector send error:", error);
+            if(noteStatus){noteStatus(error);}
         });
     },
-    pushEm: function(fcmTokens, msg){
+    pushEm: function(fcmTokens, msg, allPushingDone){
         return function doThePushing(){
-            for(var token = 0; token < fcmTokens.length; token++){
-                firebase.pushIt(fcmTokens[token], msg);
-            }
+            firebase.pushIt(fcmTokens[fcmTokens.length - 1], msg, function(error, res){
+                if(error){
+                    allPushingDone(error);// abort, TODO can created retry logic later
+                } else if(res){           // because fuck reading what that thing has to say, lets just assume things
+                    fcmTokens.pop();      // pop off that one we just sent to recursively hit the next in array
+                    if(fcmTokens.length){ // basecase: as long as we still have tokens to push to
+                        firebase.pushEm(fcmTokens, msg, allPushingDone)();
+                    } else {allPushingDone();}
+                }
+            });
         };
     }
 };
@@ -35,7 +45,9 @@ var mongo = {
     PUSH: 'pushdetector',  // name of push server database
     LOBBY: 'lobbys',       // name of collection that stores customer routes
     USER: 'profiles',      // name of collection that stores user data
-    lOGIN: 'logins',       // persitent key/val store of lOGIN users (should prob use redis)
+    LOGIN: 'logins',       // persitent key/val store of lOGIN users (should prob use redis)
+    STATUS: 'status',      // stores appointment status
+    APPOINTMENT: "appointments", // collection that stores appointments
     client: require('mongodb').MongoClient,
     db: {},                                            // object that contains connected databases
     connect: function(url, dbName, connected){         // url to db and what well call this db in case we want multiple
@@ -53,7 +65,7 @@ var mongo = {
     },
     log: function(msg){                                // persistent logs
         var timestamp = new Date();
-        mongo.db[mongo.MAIN].collection('logs').insertOne({
+        mongo.db[mongo.PUSH].collection('logs').insertOne({ // its important this is database that this service is pointed at
                 msg: msg,
                 timestamp: timestamp.toUTCString()
             }, function onInsert(error){
@@ -72,7 +84,7 @@ var mongo = {
     }
 };
 
-var detect = { // object that is responsible for searching database to find when a push notification needs to be initiated
+/* var detect = { // object that is responsible for searching database to find when a push notification needs to be initiated
     appointments: function(){
         setTimeout(detect.appointments, FIVE_MIN); // call this function once more in next five minutes
         var cursor = mongo.db[mongo.MAIN].collection(mongo.USER).find({});
@@ -106,6 +118,182 @@ var detect = { // object that is responsible for searching database to find when
                 }
             }
         }
+    }
+}; */
+
+var detect = {
+    appointments: function(){
+        setTimeout(detector.appointments, ONE_MIN); // call this function once more in next five minutes
+        detect.startTime = new Date().getTime();
+        var cursor = mongo.db[mongo.MAIN].collection(mongo.APPOINTMENT).find({time: {$gte : detect.startTime}}); // TODO is there a mongo function to make comparison on database
+        detector.doc(cursor); // we only care about appointments that could possibly happen
+    },
+    doc: function(cursor){
+        process.nextTick(function nextDoc(){ // lets keep event loop free to tackle other things like sending notifications
+            cursor.nextObject(function onDoc(error, appointment){
+                if(error){mongo.log('headsup: ' + error);}
+                else if(appointment){
+                    mongo.db[mongo.PUSH].collection(mongo.STATUS).find(     // finds recorded status of notification opperations
+                        {lobbyname: doc.lobbyname, time: appointment.time}, // appointments are only unique object.id or lobbyname and time
+                        function onStatus(err, status){                     // note we could find something or nothing and its fine either way
+                            if(err){mongo.log('error finding status: ' + error);}
+                            else{detect.process(appointment, status);}
+                        }
+                    );
+                    detect.doc(cursor);
+                } else { // occures when we have fun out of items in stream
+                    var endtime = new Date().getTime();
+                    var elapsed = endtime - detect.startTime;
+                    console.log('done stream in: ' + elapsed + ' milliseconds');
+                }
+            });
+        });
+    },
+    process: function(appointment, status){                         // checks data state against our recorded status
+        var pending = {
+            lobbyname: appointment.lobbyname,
+            time: appointment.time,
+            proccessBlock: false,                              // basically means a current process waiting for a result
+            lobbyOwnerNotified: false,
+            confirmed: false,
+            initiated: false,
+            attempts: 0,                                       // notification attempts (broad)
+        };
+        if(status){ // given we have established status or defualts
+            if(status.proccessBlock){return;} // this appointment has pending opperations with another process, move to next doc
+            if(status.lobbyOwnerNotified){pending.lobbyOwnerNotified = true;}
+            if(status.confirmed){pending.confirmed = true;}
+            if(status.initiated){pending.initiated = true;}
+        }
+        var offset = pending.time - new Date().getTime();          // figure in how many millis appointment needs to happen
+        if(offset < FIVE_MIN){                                     // given that this appointment is comming up in about five minutes
+            if(!pending.initiated){
+                detect.notify(pending, function(profile){
+                    var particpants = [profile.fcmToken, appointment.fcmToken];
+                    offset = pending.time - new Date().getTime();  // refigure offset to send
+                    setTimeout(firebase.pushEm(particpants, profile.hangoutLink, detect.onPushes(pending)), offset); //
+                });
+                pendingStatus.proccessBlock = true;
+            }
+        } else {
+            if(!pending.lobbyOwnerNotified){ // check if user has been notified already
+                firebase.pushIt(appointment.fcmToken, doc.hangoutLink, detector.ownerNotified(appointment.lobbyname, appointment.time));
+                pendingStatus.proccessBlock = true;
+            }
+        }
+        detect.update(pending);
+    },
+    notify: function(pending, onProfile){ // middleware for keeping status up to date while intiating and appointment
+        mongo.db[mongo.MAIN].collection(mongo.USER).findOne(
+            {lobbyname: pending.lobbyname},
+            function onInfo(error, profile){
+                if(profile){onProfile(profile);}
+                else {
+                    pending.proccessBlock = false;
+                    detect.update(pending);
+                }
+            }
+        );
+    },
+    onPushes: function(previousPending){
+        var pending = {
+            lobbyname: previousPending.lobbyname,
+            time: previousPending.time,
+        };
+        return function(error){
+            if(error){
+                pending.attempts = previousPending.attempts + 1;
+                pending.proccessBlock = false;
+            } else {pending.initiated = true;}
+            detect.update(pending);
+        };
+    },
+    update: function(pending){
+        mongo.db[mongo.PUSH].collection(mongo.STATUS).updateOne(
+            {lobbyname: pending.lobbyname}, // search object
+            {$set: pending},                // update object
+            {upsert: true},                 // create an new docment from search object and update object when no doc is found
+            function statusUpdate(err, res){
+                if(err){mongo.log('status update error: '+ error);}
+            }
+        );
+    }
+};
+
+var detector = { // meathods for giving lobby holders a heads up that appointments have been made
+    appointments: function(){
+        setTimeout(detector.appointments, ONE_MIN); // call this function once more in next five minutes
+        var cursor = mongo.db[mongo.MAIN].collection(mongo.USER).find({});
+        detector.doc(cursor);
+    },
+    doc: function(cursor){
+        process.nextTick(function nextDoc(){
+            cursor.nextObject(function onDoc(error, doc){
+                if(error){mongo.log('headsup: ' + error);}
+                else if(doc){
+                    mongo.db[mongo.PUSH].collection(mongo.STATUS).find(
+                        {lobbyname: doc.lobbyname},
+                        function onStatus(err, status){
+                            if(err){mongo.log('error finding status: ' + error);}
+                            else{detector.process(doc, status);}
+                        }
+                    );
+                    detector.doc(cursor);
+                }
+            });
+        });
+    },
+    process: function(doc, currentStatus){                         // checks data state against our recorded status
+        if(doc.appointments.length){                               // otherwise there is nothing to do
+            var updateStatus ={appointments: [],};                 // mirrors status of appointments so main service knows when to clean up
+            var stateOfStatus = {
+                time: appoint.time,
+                proccessBlock: false,                              // basically means a current process waiting for a result
+                lobbyOwnerNotified: false,
+                confirmed: false,
+                initiated: false,
+            };
+            for(var appointment = 0; appointment < doc.appointments.length; appointment++){ // for each appointment
+                var offset = doc.appointments[appointment].time - currentTime;              // figure in how many millis appointment needs to happen
+                if(offset > 0 && offset < FIVE_MIN){                           // given that this appointment is comming up in about five minutes
+                    status(doc.appointments[appointment], 'schedule');
+                    var millisToSend = 0;                                      // send imediately if we are getting close to send time
+                    if(offset > ONE_MIN){millisToSend = offset - ONE_MIN;}     // avoid sending in a negative amount of time
+                    var particpants = [doc.fcmToken, doc.appointments[appointment].fcmToken];
+                    setTimeout(firebase.pushEm(particpants, doc.hangoutLink), millisToSend); // TODO make sure another process hasn't already done this
+                    stateOfStatus.initiated = true;
+                } else {
+                    if(offset > 0){
+                        // TODO check if user has been notified already
+                        firebase.pushIt(doc.appointments[appointment].fcmToken, doc.hangoutLink, detector.ownerNotified(doc.lobbyname, doc.appointments[appointment].time));
+                        stateOfStatus.proccessBlock = true;
+                    }
+                }
+            }
+            updateStatus.appointments.push(stateOfStatus);
+            mongo.db[mongo.PUSH].collection(mongo.STATUS).updateOne(
+                {lobbyname: doc.lobbyname}, // search object
+                {$set: updateStatus},          // update object
+                {upsert: true},             // create an new docment from search object and update object when no doc is found
+                function statusUpdate(err, res){
+                    if(err){mongo.log('status update error: '+ error);}
+                }
+            );
+        }
+    },
+    ownerNotified: function(lobby, time){
+        return function(error, result){
+            if(error){console.log('you probably should try to push again: ' + error);}
+            else if(result){
+                mongo.db[mongo.PUSH].collection(mongo.STATUS).updateOne(
+                    {lobbyname: lobby, 'appointments.time': time},
+                    {$set:{'appointments.$.lobbyOwnerNotified': true}},
+                    function statusInsert(err, res){
+                        if(err){mongo.log('status insert error: '+ error);}
+                    }
+                );
+            } else {console.log('i dunno');}
+        };
     }
 };
 
