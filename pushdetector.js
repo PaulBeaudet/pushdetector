@@ -96,7 +96,7 @@ var detect = {
             cursor.nextObject(function onDoc(error, appointment){
                 if(error){mongo.log('headsup: ' + error);}
                 else if(appointment){
-                    mongo.db[mongo.PUSH].collection(mongo.STATUS).find(             // finds recorded status of notification opperations
+                    mongo.db[mongo.PUSH].collection(mongo.STATUS).findOne(             // finds recorded status of notification opperations
                         {lobbyname: appointment.lobbyname, time: appointment.time}, // appointments are only unique object.id or lobbyname and time
                         function onStatus(err, status){                             // note we could find something or nothing and its fine either way
                             if(err){mongo.log('error finding status: ' + error);}
@@ -117,14 +117,14 @@ var detect = {
             lobbyname: appointment.lobbyname, // not needed for updates, but helps to be able to easily pass it
             time: appointment.time,           // makes this doc easy to find lobby plus time will always be uniques because there is no double booking
             proccessBlock: false,             // basically means a current process waiting for a result
-            lobbyOwnerNotified: false,        // lobby owner got notified this interaction is going to happen
+            notified: false,                   // lobby owner got notified this interaction is going to happen
             confirmed: false,                 // lobby owner confirmed appointment
             initiated: false,                 // appointment has been initiated
             attempts: 0,                      // notification attempts (broad any failure)
         };
         if(status){                           // given we have established status or defualts
             if(status.proccessBlock){return;} // this appointment has pending opperations with another process, move to next doc
-            if(status.lobbyOwnerNotified){pending.lobbyOwnerNotified = true;}
+            if(status.notified){pending.notified = true;}
             if(status.confirmed){pending.confirmed = true;}
             if(status.initiated){pending.initiated = true;}
             if(status.attempts){pending.attempts = status.attempts;}
@@ -135,14 +135,14 @@ var detect = {
                 detect.getUser(pending, function(profile){
                     var particpants = [profile.fcmToken, appointment.fcmToken];
                     offset = pending.time - new Date().getTime();  // recalculated offset of when to send because this is async
-                    setTimeout(firebase.pushEm(particpants, profile.hangoutLink, detect.onPushes(pending)), offset); //
+                    setTimeout(firebase.pushEm(particpants, profile.hangoutLink, detect.onInitiate(pending)), offset); //
                 });
                 pending.proccessBlock = true;
             }
         } else {
-            if(!pending.lobbyOwnerNotified){ // check if user has been notified already
+            if(!pending.notified){ // check if user has been notified already
                 detect.getUser(pending, function(profile){
-                    firebase.pushIt(profile.fcmToken, 'someone made an appointment with you', detect.onPushes(pending));
+                    firebase.pushIt(profile.fcmToken, 'someone made an appointment with you', detect.onNotify(pending));
                 });
                 pending.proccessBlock = true;
             }
@@ -161,7 +161,7 @@ var detect = {
             }
         );
     },
-    onPushes: function(previousPending){
+    onInitiate: function(previousPending){
         var pending = {
             lobbyname: previousPending.lobbyname,
             time: previousPending.time,
@@ -174,9 +174,21 @@ var detect = {
             detect.update(pending);
         };
     },
+    onNotify: function(previousPending){
+        var pending = {
+            lobbyname: previousPending.lobbyname,
+            time: previousPending.time,
+        };
+        return function(error){
+            if(error){pending.attempts = previousPending.attempts + 1;
+            } else   {pending.notified = true;}
+            pending.proccessBlock = false;
+            detect.update(pending);
+        };
+    },
     update: function(pending){
         mongo.db[mongo.PUSH].collection(mongo.STATUS).updateOne(
-            {lobbyname: pending.lobbyname}, // search object
+            {lobbyname: pending.lobbyname, time: pending.time}, // search object
             {$set: pending},                // update object
             {upsert: true},                 // create an new docment from search object and update object when no doc is found
             function statusUpdate(err, res){
