@@ -13,18 +13,17 @@ var firebase = { // it might be better to set this up in a suplemantery service 
             credential: firebase.admin.credential.cert(serviceAccount)
         });
     },
-    pushIt: function(fcmToken, msg, noteStatus){
-        console.log(msg);
-        var payload = {data: {title: APP_TITLE, body: msg, click_action: 'www.google.com'}};
+    pushIt: function(fcmToken, msg, link, onPush){
+        var payload = {data: {title: APP_TITLE, body: msg, click_action: link}};
         firebase.admin.messaging().sendToDevice(fcmToken, payload).then(function(response) {
             console.log("Successfully sent message:", response);
-            if(noteStatus){noteStatus(null, response);}
+            if(onPush){onPush(null, response);}
         }).catch(function(error) {
             mongo.log("pushdetector send error:", error);
-            if(noteStatus){noteStatus(error);}
+            if(onPush){onPush(error);}
         });
     },
-    pushEm: function(fcmTokens, msg, allPushingDone){
+    pushEm: function(fcmTokens, msg, link, allPushingDone){
         return function doThePushing(){
             firebase.pushIt(fcmTokens[fcmTokens.length - 1], msg, function(error, res){
                 if(error){
@@ -32,7 +31,7 @@ var firebase = { // it might be better to set this up in a suplemantery service 
                 } else if(res){           // because fuck reading what that thing has to say, lets just assume things
                     fcmTokens.pop();      // pop off that one we just sent to recursively hit the next in array
                     if(fcmTokens.length){ // basecase: as long as we still have tokens to push to
-                        firebase.pushEm(fcmTokens, msg, allPushingDone)();
+                        firebase.pushEm(fcmTokens, msg, link, allPushingDone)();
                     } else {allPushingDone();}
                 }
             });
@@ -86,8 +85,9 @@ var mongo = {
 
 var detect = {
     appointments: function(){
-        setTimeout(detect.appointments, ONE_MIN); // call this function once more in next five minutes
+        setTimeout(detect.appointments, 20000); // call this function once more in x millis of time
         detect.startTime = new Date().getTime();
+        console.log('starting at ' + detect.startTime);
         var cursor = mongo.db[mongo.MAIN].collection(mongo.APPOINTMENT).find({time: {$gte : detect.startTime}}); // TODO is there a mongo function to make comparison on database
         detect.doc(cursor); // we only care about appointments that could possibly happen
     },
@@ -135,14 +135,14 @@ var detect = {
                 detect.getUser(pending, function(profile){
                     var particpants = [profile.fcmToken, appointment.fcmToken];
                     offset = pending.time - new Date().getTime();  // recalculated offset of when to send because this is async
-                    setTimeout(firebase.pushEm(particpants, profile.hangoutLink, detect.onInitiate(pending)), offset); //
+                    setTimeout(firebase.pushEm(particpants, 'hangout starting', profile.hangoutLink, detect.onInitiate(pending)), offset); //
                 });
                 pending.proccessBlock = true;
             }
         } else {
             if(!pending.notified){ // check if user has been notified already
                 detect.getUser(pending, function(profile){
-                    firebase.pushIt(profile.fcmToken, 'someone made an appointment with you', detect.onNotify(pending));
+                    firebase.pushIt(profile.fcmToken, 'someone made an appointment with you', '/user/' + profile.lobbyname, detect.onNotify(pending));
                 });
                 pending.proccessBlock = true;
             }
