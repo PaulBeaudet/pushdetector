@@ -16,7 +16,7 @@ var firebase = { // it might be better to set this up in a suplemantery service 
     pushIt: function(fcmToken, msg, link, onPush){
         var payload = {data: {title: APP_TITLE, body: msg, click_action: link}};
         firebase.admin.messaging().sendToDevice(fcmToken, payload).then(function(response) {
-            console.log("Successfully sent message:", response);
+            // console.log("Successfully sent message:", response);
             if(onPush){onPush(null, response);}
         }).catch(function(error) {
             mongo.log("pushdetector send error:", error);
@@ -85,9 +85,8 @@ var mongo = {
 
 var detect = {
     appointments: function(){
-        setTimeout(detect.appointments, 20000); // call this function once more in x millis of time
+        setTimeout(detect.appointments, 60000); // call this function once more in x millis of time
         detect.startTime = new Date().getTime();
-        console.log('starting at ' + detect.startTime);
         var cursor = mongo.db[mongo.MAIN].collection(mongo.APPOINTMENT).find({time: {$gte : detect.startTime}}); // TODO is there a mongo function to make comparison on database
         detect.doc(cursor); // we only care about appointments that could possibly happen
     },
