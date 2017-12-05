@@ -5,6 +5,7 @@
     "main": "pushdetector.js",
     "scripts": {
         "start": "node pushdetector.js",
+        "dev-start": "pm2 start start.sh --name=pushdetector",
         "test": "echo \"Error: no test specified\" && exit 1"
     },
     "keywords": [
