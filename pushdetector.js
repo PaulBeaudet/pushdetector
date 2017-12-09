@@ -17,15 +17,15 @@ var firebase = { // it might be better to set this up in a suplemantery service 
         var payload = {data: {title: APP_TITLE, body: msg, click_action: link}};
         firebase.admin.messaging().sendToDevice(fcmToken, payload).then(function(response) {
             // console.log("Successfully sent message:", response);
-            if(onPush){onPush(null, response);}
+            if(onPush){onPush(null, response);} // given we respond to succesful pushes respond with error and succesful response
         }).catch(function(error) {
-            mongo.log("pushdetector send error:", error);
+            console.log("pushdetector send error:", JSON.stringify(error));
             if(onPush){onPush(error);}
         });
     },
     pushEm: function(fcmTokens, msg, link, allPushingDone){
         return function doThePushing(){
-            firebase.pushIt(fcmTokens[fcmTokens.length - 1], msg, function(error, res){
+            firebase.pushIt(fcmTokens[fcmTokens.length - 1], msg, function onPush(error, res){
                 if(error){
                     allPushingDone(error);// abort, TODO can created retry logic later
                 } else if(res){           // because fuck reading what that thing has to say, lets just assume things
@@ -95,7 +95,7 @@ var detect = {
             cursor.nextObject(function onDoc(error, appointment){
                 if(error){mongo.log('headsup: ' + error);}
                 else if(appointment){
-                    mongo.db[mongo.PUSH].collection(mongo.STATUS).findOne(             // finds recorded status of notification opperations
+                    mongo.db[mongo.PUSH].collection(mongo.STATUS).findOne(          // finds recorded status of notification opperations
                         {lobbyname: appointment.lobbyname, time: appointment.time}, // appointments are only unique object.id or lobbyname and time
                         function onStatus(err, status){                             // note we could find something or nothing and its fine either way
                             if(err){mongo.log('error finding status: ' + error);}
@@ -116,7 +116,7 @@ var detect = {
             lobbyname: appointment.lobbyname, // not needed for updates, but helps to be able to easily pass it
             time: appointment.time,           // makes this doc easy to find lobby plus time will always be uniques because there is no double booking
             proccessBlock: false,             // basically means a current process waiting for a result
-            notified: false,                   // lobby owner got notified this interaction is going to happen
+            notified: false,                  // lobby owner got notified this interaction is going to happen
             confirmed: false,                 // lobby owner confirmed appointment
             initiated: false,                 // appointment has been initiated
             attempts: 0,                      // notification attempts (broad any failure)
@@ -237,3 +237,4 @@ if(process.env.NEW_CONFIG === 'true'){        // given that this is on dev side 
 } else {                                      // mainly exist so that heroku can atomatically pull changes to repo
     config.decrypt(process.env.KEY, startup); // decrypt service Account file when in the cloud (given shared key has been set)
 }
+console.log('running version 1.1');
