@@ -25,7 +25,7 @@ var firebase = { // it might be better to set this up in a suplemantery service 
     },
     pushEm: function(fcmTokens, msg, link, allPushingDone){
         return function doThePushing(){
-            firebase.pushIt(fcmTokens[fcmTokens.length - 1], msg, function onPush(error, res){
+            firebase.pushIt(fcmTokens[fcmTokens.length - 1], msg, link, function onPush(error, res){
                 if(error){
                     allPushingDone(error);// abort, TODO can created retry logic later
                 } else if(res){           // because fuck reading what that thing has to say, lets just assume things
