@@ -1,3 +1,4 @@
 *.sh
 node_modules
 private
+ecosystem.config.js
