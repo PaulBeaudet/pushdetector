@@ -237,4 +237,4 @@ if(process.env.NEW_CONFIG === 'true'){        // given that this is on dev side 
 } else {                                      // mainly exist so that heroku can atomatically pull changes to repo
     config.decrypt(process.env.KEY, startup); // decrypt service Account file when in the cloud (given shared key has been set)
 }
-console.log('running version 1.3');
+console.log('running version 1.4');
