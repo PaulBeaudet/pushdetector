@@ -26,8 +26,8 @@
     },
     "homepage": "https://github.com/PaulBeaudet/pushdetector#readme",
     "dependencies": {
-        "firebase-admin": "^5.4.1",
-        "mongodb": "^2.2.31",
+        "firebase-admin": "^5.5.1",
+        "mongodb": "^2.2.33",
         "tmp": "0.0.33"
     },
     "engines": {
