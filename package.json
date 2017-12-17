@@ -1,6 +1,6 @@
 {
     "name": "pushdetector",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "description": "Determines when push notifications need to intiated",
     "main": "pushdetector.js",
     "scripts": {
