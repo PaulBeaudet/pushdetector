@@ -5,9 +5,9 @@
     "main": "pushdetector.js",
     "scripts": {
         "start": "node pushdetector.js",
-        "preversion": "echo \"this is so preverted\" && exit 1",
-        "version": "echo \"creating a version\" && exit 1",
-        "postversion": "echo \"just do it\" && exit 1",
+        "preversion": "echo \"this is so preverted\"",
+        "version": "echo \"creating a version\"",
+        "postversion": "echo \"just do it\"",
         "prod-start": "npm install -g pm2 && pm2 start ecosystem.cofig.js",
         "test": "echo \"Erm: no test specified\" && exit 1"
     },
