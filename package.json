@@ -5,8 +5,11 @@
     "main": "pushdetector.js",
     "scripts": {
         "start": "node pushdetector.js",
-        "dev-start": "pm2 start start.sh --name=pushdetector",
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "preversion": "echo \"this is so preverted\" && exit 1",
+        "version": "echo \"creating a version\" && exit 1",
+        "postversion": "echo \"just do it\" && exit 1",
+        "prod-start": "npm install -g pm2 && pm2 start ecosystem.cofig.js",
+        "test": "echo \"Erm: no test specified\" && exit 1"
     },
     "keywords": [
         "push",
@@ -14,6 +17,14 @@
     ],
     "author": "Paul Beaudet",
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/PaulBeaudet/pushdetector.git"
+    },
+    "bugs": {
+        "url": "https://github.com/PaulBeaudet/pushdetector/issues"
+    },
+    "homepage": "https://github.com/PaulBeaudet/pushdetector#readme",
     "dependencies": {
         "firebase-admin": "^5.4.1",
         "mongodb": "^2.2.31",
