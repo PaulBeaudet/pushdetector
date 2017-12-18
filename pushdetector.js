@@ -85,28 +85,27 @@ var mongo = {
 
 var detect = {
     appointments: function(){
-        setTimeout(detect.appointments, 60000); // call this function once more in x millis of time
-        detect.startTime = new Date().getTime();
-        var cursor = mongo.db[mongo.MAIN].collection(mongo.APPOINTMENT).find({time: {$gte : detect.startTime}}); // TODO is there a mongo function to make comparison on database
-        detect.doc(cursor); // we only care about appointments that could possibly happen
+        setTimeout(detect.appointments, 60000);  // call this function once more in x millis of time
+        detect.startTime = new Date().getTime(); // place hold starting time to understand if event is taking too long to process
+        var cursor = mongo.db[mongo.MAIN].collection(mongo.APPOINTMENT).find({time: {$gte : detect.startTime}}); // query web app database
+        detect.doc(cursor);                      // we only care about appointments that could possibly happen
     },
     doc: function(cursor){
-        process.nextTick(function nextDoc(){ // lets keep event loop free to tackle other things like sending notifications
-            cursor.nextObject(function onDoc(error, appointment){
-                if(error){mongo.log('headsup: ' + error);}
-                else if(appointment){
+        process.nextTick(function nextDoc(){                                        // free event loop to tackle things like sending notifications
+            cursor.nextObject(function onDoc(error, appointment){                   // read current object being pointed at, pointer is incremented at end
+                if(error){mongo.log('headsup: ' + error);}                          // just in case, we may want to continue to recurse in this case
+                else if(appointment){                                               // given that we have a document for this place cursor points to
                     mongo.db[mongo.PUSH].collection(mongo.STATUS).findOne(          // finds recorded status of notification opperations
                         {lobbyname: appointment.lobbyname, time: appointment.time}, // appointments are only unique object.id or lobbyname and time
                         function onStatus(err, status){                             // note we could find something or nothing and its fine either way
-                            if(err){mongo.log('error finding status: ' + error);}
-                            else{detect.process(appointment, status);}
-                        }
-                    );
-                    detect.doc(cursor);
-                } else { // occures when we have fun out of items in stream
-                    var endtime = new Date().getTime();
-                    var elapsed = endtime - detect.startTime;
-                    console.log('done stream in: ' + elapsed + ' milliseconds');
+                            if(err){mongo.log('error finding status: ' + error);}   // NOTE: might want to detect.process whether there was an error or not
+                            else{detect.process(appointment, status);}              // appointment stays in closure, status could be undefined
+                        }                                                           // NOTE this is an async for inside a for as far on two seperate dbs
+                    );                                                              // May pull all appointments in to mem before any status are found
+                    detect.doc(cursor);                                             // recurse through entire collection when all is good
+                } else {                                                            // else when we have run out of items in stream
+                    var elapsed = new Date().getTime() - detect.startTime;          // note how long it took to process all documents, will change with growth
+                    console.log('done stream in: ' + elapsed + ' milliseconds');    // log this for now maybe record it future
                 }
             });
         });
@@ -185,12 +184,12 @@ var detect = {
             detect.update(pending);
         };
     },
-    update: function(pending){
+    update: function(pending){                                   // update push notification database that tracks status of pending appointments
         mongo.db[mongo.PUSH].collection(mongo.STATUS).updateOne(
-            {lobbyname: pending.lobbyname, time: pending.time}, // search object
-            {$set: pending},                // update object
-            {upsert: true},                 // create an new docment from search object and update object when no doc is found
-            function statusUpdate(err, res){
+            {lobbyname: pending.lobbyname, time: pending.time},  // search object, lobby and time combined are unique
+            {$set: pending},                                     // update object, will set new feilds with out completly replacing doc
+            {upsert: true},                                      // create an new docment from search object and update object when no doc is found
+            function statusUpdate(err, res){                     // callback on succesful update
                 if(err){mongo.log('status update error: '+ error);}
             }
         );
