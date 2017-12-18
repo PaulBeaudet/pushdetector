@@ -196,6 +196,16 @@ var detect = {
     }
 };
 
+var clean = { // methods that removes or archives inactive documents from database this process is responsible for
+    status: function(){
+        mongo.db[mongo.PUSH].collection(mongo.STATUS).deleteMany({time: {$lte : new Date().getTime() + 20}}, function onDeleted(error, result){ // TODO add buffer time
+            if(error){console.log('deleteMany error: ' + error);}
+            else{console.log(result.result.n + " doc(s) deleted");}
+        });
+        setTimeout(clean.status, 60000);
+    }
+};
+
 var config = {
     crypto: require('crypto'),
     fs: require('fs'),
@@ -227,7 +237,8 @@ var config = {
 function startup(serviceFilePath){
     firebase.init(serviceFilePath);                       // setup communication with firebase servers to do push notifications
     mongo.init(process.env.MONGODB_URI, process.env.MAIN_MONGO, function mainDbUp(){ // set up connections for data persistence
-        detect.appointments();
+        detect.appointments();                           // Streams through appointments and updates status and send push notifications when needed
+        clean.status();                                  // Streams through status and removes or archives old stuff
     });
 }
 
