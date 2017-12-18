@@ -198,7 +198,7 @@ var detect = {
 
 var clean = { // methods that removes or archives inactive documents from database this process is responsible for
     status: function(){
-        mongo.db[mongo.PUSH].collection(mongo.STATUS).deleteMany({time: {$lte : new Date().getTime() + 20}}, function onDeleted(error, result){ // TODO add buffer time
+        mongo.db[mongo.PUSH].collection(mongo.STATUS).deleteMany({time: {$lte : new Date().getTime() - 20}}, function onDeleted(error, result){ // TODO subtract buffer time
             if(error){console.log('deleteMany error: ' + error);}
             else{console.log(result.result.n + " doc(s) deleted");}
         });
