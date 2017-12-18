@@ -196,13 +196,14 @@ var detect = {
     }
 };
 
-var clean = { // methods that removes or archives inactive documents from database this process is responsible for
-    status: function(){
-        mongo.db[mongo.PUSH].collection(mongo.STATUS).deleteMany({time: {$lte : new Date().getTime() - 20}}, function onDeleted(error, result){ // TODO subtract buffer time
+var A_DAY = 86400000;   // Constant: Millis in a day
+var clean = {           // methods that removes or archives inactive documents from database this process is responsible for
+    status: function(){ // Recursively called to remove status that are are older than a day once a day
+        mongo.db[mongo.PUSH].collection(mongo.STATUS).deleteMany({time: {$lte : new Date().getTime() - A_DAY}}, function onDeleted(error, result){
             if(error){console.log('deleteMany error: ' + error);}
             else{console.log(result.result.n + " doc(s) deleted");}
         });
-        setTimeout(clean.status, 60000);
+        setTimeout(clean.status, A_DAY);
     }
 };
 
