@@ -1,6 +1,8 @@
 ### Push Detector
 Checks database to figure when push notifications need to be sent to clients
 
+See https://github.com/PaulBeaudet/hangoutwithme user facing part of service
+
 ### To run
 use versions of node and npm specified in package.json
 
